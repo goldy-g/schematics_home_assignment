@@ -17,7 +17,7 @@ from mlflow.exceptions import MlflowException  # noqa: E402
 
 def version_by_alias(client, alias):
     try:
-        return client.get_model_version_by_alias(settings.MODEL_NAME, alias).version
+        return str(client.get_model_version_by_alias(settings.MODEL_NAME, alias).version)
     except MlflowException:
         return None
 
@@ -36,7 +36,7 @@ def show(client):
     aliases = client.get_registered_model(settings.MODEL_NAME).aliases
     print(settings.MODEL_NAME)
     for mv in sorted(client.search_model_versions(f"name='{settings.MODEL_NAME}'"), key=lambda v: int(v.version)):
-        labels = " ".join("@" + a for a, v in aliases.items() if str(v) == mv.version)
+        labels = " ".join("@" + a for a, v in aliases.items() if str(v) == str(mv.version))
         trained_until = client.get_run(mv.run_id).data.params.get("train_until", "?")
         print(f"  v{mv.version}  data up to {trained_until}  smoke check {mv.tags.get('smoke_check', '?')}  {labels}")
 
