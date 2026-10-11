@@ -12,31 +12,14 @@ which still catches real bugs (wrong columns, wrong model, wrong files) that wou
 import math
 import os
 
-import pandas as pd
 import pytest
 
 from pipeline import settings
+from pipeline.visitors import newest_week_visitors
 
 pytestmark = pytest.mark.skipif(os.environ.get("RUN_PARITY") != "1", reason="slow and online: set RUN_PARITY=1")
 
 VISITORS = 10
-FIELDS = list(settings.EXAMPLE_VISITOR)
-SURVEY = ["credit_score", "industry", "loan_amount", "loan_reason", "monthly_revenue", "time_in_business", "device_type",
-          "business_type"]
-
-
-def newest_week_visitors(count):
-    """Real registered visitors from the newest week, as request dicts (they stay in memory, never written)."""
-    data = pd.read_csv(settings.DATA_FILE, low_memory=False)
-    data = data[data["register_date"].notna() & (data[SURVEY].notna().sum(axis=1) >= 5)]
-    data["session_dt"] = pd.to_datetime(data["session_dt"])
-    week = data[data["session_dt"] > data["session_dt"].max() - pd.Timedelta(days=6)]
-    rows = week.sample(count, random_state=0)
-    rows["session_dt"] = rows["session_dt"].dt.strftime("%Y-%m-%d %H:%M:%S")
-    rows["cellphone"] = rows["cellphone"].astype("int64")
-    # a missing answer arrives as JSON null, i.e. None (their code expects text or None, not a float NaN)
-    return [{k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in row.items()}
-            for row in rows[FIELDS].to_dict("records")]
 
 
 def test_served_model_ranks_like_their_predictor():
