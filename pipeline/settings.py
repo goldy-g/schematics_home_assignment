@@ -20,6 +20,14 @@ PREVIOUS = "previous"                                # alias: the version before
 WEEKLY_CRON = "0 5 * * 0"
 TIMEZONE = "Asia/Jerusalem"
 
+# TabPFN (task 1.8, measured in scripts/tabpfn_options.py). Their code leaves the model to the server's default, "auto",
+# which is TabPFN-3.5 today and can change without notice. We pin it, fit once with the server-side cache, and give
+# every request a deadline: past it, the ranking falls back to CatBoost's P(lead) x the brand's median payout.
+TABPFN_MODEL = "v3.5_default"
+TABPFN_FIT_MODE = "fit_with_cache"
+TABPFN_FIT_FILE = "tabpfn_fit.json"   # the saved fit, stored inside each model version
+PAYOUT_DEADLINE_S = float(os.environ.get("PAYOUT_DEADLINE_S", "2.0"))
+
 # The three files their trainer writes in production mode, which the predictor reads
 MODEL_FILES = ("CB_bl_lead.cbm", "payout_tfm_context.joblib", "all_clients.csv")
 

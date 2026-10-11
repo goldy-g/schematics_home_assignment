@@ -11,6 +11,7 @@ import shutil
 import sys
 import time
 from datetime import datetime
+from functools import partial
 from importlib.metadata import version
 from platform import python_version
 
@@ -18,12 +19,18 @@ from pipeline import settings
 
 settings.load_env()  # before importing mlflow: the TabPFN token, and MLflow's usage statistics off
 
+import joblib  # noqa: E402
 import mlflow  # noqa: E402
 import pandas as pd  # noqa: E402
 from mlflow.models import infer_signature  # noqa: E402
+from tabpfn_client import TabPFNRegressor  # noqa: E402
 
 import bl_models_train as theirs  # noqa: E402  (their file; importing it loads the names database, about 3 s)
 from pipeline import promote, researcher_log  # noqa: E402
+
+# Pin TabPFN's model inside their trainer: the same class with one argument preset; their file stays unchanged.
+# Without it, Prior Labs' default ("auto") answers, and that can change between this run and serving.
+theirs.TabPFNRegressor = partial(TabPFNRegressor, model_path=settings.TABPFN_MODEL)
 
 PACKAGES = ("pandas", "numpy", "scikit-learn", "joblib", "catboost", "names-dataset", "tabpfn-client", "mlflow")
 TABPFN_SETTINGS = ("model_path", "n_estimators", "fit_mode", "random_state", "ignore_pretraining_limits")
@@ -84,12 +91,23 @@ def log_accuracy(text):
             mlflow.log_metric("payout_mae_at_threshold", mae, step=threshold)
 
 
+def save_tabpfn_fit(files):
+    """Fit TabPFN once, here, with the server-side cache, and save the fit's id: servers then start without fitting."""
+    context = joblib.load(files / "payout_tfm_context.joblib")
+    tabpfn = TabPFNRegressor(ignore_pretraining_limits=True, model_path=settings.TABPFN_MODEL,
+                             fit_mode=settings.TABPFN_FIT_MODE)
+    tabpfn.fit(context["x"], context["y"])
+    tabpfn.save_model(files / settings.TABPFN_FIT_FILE)
+
+
 def register(out_dir):
-    """Package the three files, their predictor and our wrapper as one MLflow model, registered as a new version."""
+    """Package the three files, the saved TabPFN fit, their predictor and our wrapper as one MLflow model,
+    registered as a new version."""
     files = out_dir / "files"
     files.mkdir()
     for name in settings.MODEL_FILES:
         shutil.copy2(out_dir / name, files / name)
+    save_tabpfn_fit(files)
     example = pd.DataFrame([settings.EXAMPLE_VISITOR])
     info = mlflow.pyfunc.log_model(
         name="ranker",
@@ -98,6 +116,8 @@ def register(out_dir):
         code_paths=[str(settings.ROOT / "bl_exp_payout_predictor.py")],  # their predictor travels with every version
         signature=infer_signature(example),                              # the 22 request fields and their types
         input_example=example,
+        model_config={"tabpfn_model": settings.TABPFN_MODEL, "tabpfn_fit_mode": settings.TABPFN_FIT_MODE,
+                      "tabpfn_fit_file": settings.TABPFN_FIT_FILE, "payout_deadline_s": settings.PAYOUT_DEADLINE_S},
         pip_requirements=[f"{p}=={version(p)}" for p in PACKAGES],
         registered_model_name=settings.MODEL_NAME,
     )
