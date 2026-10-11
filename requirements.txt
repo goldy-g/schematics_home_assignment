@@ -1,0 +1,14 @@
+# Python 3.12+ (their scripts use multi-line f-strings, PEP 701)
+# Models (as used by the researcher's two scripts)
+pandas==2.3.3
+numpy==2.5.4
+scikit-learn==1.9.0
+joblib==1.6.0
+catboost==1.2.10
+names-dataset==3.3.1
+tabpfn-client==0.6.1
+# Tracking, registry and serving
+mlflow==3.17.0
+fastapi==0.143.0
+uvicorn==0.54.0
+httpx==0.28.1

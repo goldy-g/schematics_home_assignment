@@ -1,0 +1,18 @@
+# Secrets: the TabPFN token lives only in .env, never in git
+.env
+
+# The dataset holds names, phone numbers and addresses: it stays on the machine
+data/
+
+# Local Python environment
+.venv/
+__pycache__/
+*.pyc
+
+# Everything the pipeline writes: model files, logs, MLflow records, load-test results
+outputs/
+mlruns/
+mlflow.db
+*.log
+
+.DS_Store
