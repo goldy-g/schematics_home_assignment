@@ -15,6 +15,11 @@ MODEL_NAME = "bl_brand_ranker"                       # registered model: what th
 CHAMPION = "champion"                                # alias: the version production uses
 PREVIOUS = "previous"                                # alias: the version before it, the rollback target
 
+# The weekly job (briefing: "Schedule the production run weekly, Sunday 05:00"), read in Israel time.
+# Cron fields: minute 0, hour 5, any day of the month, any month, day of week 0 = Sunday.
+WEEKLY_CRON = "0 5 * * 0"
+TIMEZONE = "Asia/Jerusalem"
+
 # The three files their trainer writes in production mode, which the predictor reads
 MODEL_FILES = ("CB_bl_lead.cbm", "payout_tfm_context.joblib", "all_clients.csv")
 

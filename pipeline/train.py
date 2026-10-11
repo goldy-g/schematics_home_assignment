@@ -114,16 +114,15 @@ def smoke_check(model_version):
     return ok, answer
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--mode", choices=["test", "production"], required=True)
-    args = parser.parse_args()
-    production = args.mode == "production"
-
+def run(mode, evaluation_run_id=None):
+    """Train in one mode as one MLflow run, and return its id. Production also registers, checks and promotes."""
+    production = mode == "production"
     settings.setup_mlflow(settings.PROD_EXPERIMENT if production else settings.EVAL_EXPERIMENT)
-    with mlflow.start_run(run_name=f"{args.mode}-{datetime.now():%Y%m%d-%H%M}") as run:
+    with mlflow.start_run(run_name=f"{mode}-{datetime.now():%Y%m%d-%H%M}") as run:
+        if evaluation_run_id:
+            mlflow.set_tag("evaluation_run_id", evaluation_run_id)  # the test run that scored this same data and code
         out_dir = settings.RUNS_DIR / run.info.run_id
-        mlflow.log_params({"mode": args.mode, "train_test": not production, **data_facts(settings.DATA_FILE),
+        mlflow.log_params({"mode": mode, "train_test": not production, **data_facts(settings.DATA_FILE),
                            "python": python_version(), **{f"pkg_{p}": version(p) for p in PACKAGES}})
 
         fit = ObservedFit(f"{settings.DATA_FILE.parent}/", settings.DATA_FILE.name, f"{out_dir}/",
@@ -143,16 +142,23 @@ def main():
         if not production:
             log_accuracy(text)
             print(f"test run {run.info.run_id}: accuracy logged")
-            return
+            return run.info.run_id
 
         model_version = register(out_dir)
         ok, answer = smoke_check(model_version)
         client = mlflow.MlflowClient()
         client.set_model_version_tag(settings.MODEL_NAME, model_version, "smoke_check", "passed" if ok else "failed")
-        if not ok:
+        if not ok:  # the run is marked FAILED, and @champion stays on the version that works
             sys.exit(f"version {model_version} failed the smoke check, so @champion stays where it is. Answer: {answer}")
         promote.promote(client, model_version)
         print(f"production run {run.info.run_id}: {settings.MODEL_NAME} v{model_version} is now @{settings.CHAMPION}")
+        return run.info.run_id
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--mode", choices=["test", "production"], required=True)
+    run(parser.parse_args().mode)
 
 
 if __name__ == "__main__":

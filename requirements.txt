@@ -12,5 +12,6 @@ mlflow==3.17.0
 fastapi==0.143.0
 uvicorn==0.54.0
 httpx==0.28.1
+croniter==6.0.0
 # Tests
 pytest==8.4.2
