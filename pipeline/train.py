@@ -1,0 +1,159 @@
+"""Run their training in one mode, recorded as one MLflow run.
+
+    python -m pipeline.train --mode test         train on older data, score the newest week, log the accuracy
+    python -m pipeline.train --mode production   train, register a new model version, check it, make it the champion
+
+Their code (bl_models_train.py) runs unchanged. This file records what happens around it.
+"""
+import argparse
+import hashlib
+import shutil
+import sys
+import time
+from datetime import datetime
+from importlib.metadata import version
+from platform import python_version
+
+from pipeline import settings
+
+settings.load_env()  # before importing mlflow: the TabPFN token, and MLflow's usage statistics off
+
+import mlflow  # noqa: E402
+import pandas as pd  # noqa: E402
+from mlflow.models import infer_signature  # noqa: E402
+
+import bl_models_train as theirs  # noqa: E402  (their file; importing it loads the names database, about 3 s)
+from pipeline import promote, researcher_log  # noqa: E402
+
+PACKAGES = ("pandas", "numpy", "scikit-learn", "joblib", "catboost", "names-dataset", "tabpfn-client", "mlflow")
+TABPFN_SETTINGS = ("model_path", "n_estimators", "fit_mode", "random_state", "ignore_pretraining_limits")
+
+
+class ObservedFit(theirs.BLPayoutModelsFit):
+    """Their class, plus notes taken around three of its steps. Each override calls theirs and changes nothing."""
+
+    def __init__(self, *args, **kwargs):
+        self.facts = {}
+        super().__init__(*args, **kwargs)
+
+    def split_by_time(self, bl_data, days_for_test):
+        train, test = super().split_by_time(bl_data, days_for_test)
+        self.facts.update(rows_train=len(train), rows_test=len(test), days_for_test=days_for_test,
+                          train_until=str(train["session_dt"].max()), test_from=str(test["session_dt"].min()))
+        return train, test
+
+    def catbosot_model_sold_to_client(self, x_train, y_train):
+        start = time.perf_counter()
+        model = super().catbosot_model_sold_to_client(x_train, y_train)
+        self.facts["seconds_catboost_fit"] = time.perf_counter() - start
+        self.facts["n_features"] = x_train.shape[1]
+        self.facts["catboost"] = model.get_params()
+        return model
+
+    def tabpfn_regression_payout(self, x_train_payout, y_train_payout):
+        start = time.perf_counter()
+        model, context = super().tabpfn_regression_payout(x_train_payout, y_train_payout)
+        self.facts["seconds_tabpfn_fit"] = time.perf_counter() - start
+        self.facts["tabpfn_context_rows"] = len(context["x"])
+        given = model.get_params()
+        self.facts["tabpfn"] = {k: "server default" if given.get(k) is None else given[k] for k in TABPFN_SETTINGS}
+        return model, context
+
+
+def data_facts(path):
+    """Which data this run used: a fingerprint of the file and the sessions' date range."""
+    sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+    dates = pd.to_datetime(pd.read_csv(path, usecols=["session_dt"])["session_dt"])
+    return {"data_file": path.name, "data_sha256": sha256[:16],
+            "data_first_session": str(dates.min()), "data_last_session": str(dates.max())}
+
+
+def log_accuracy(text):
+    """Test mode: the researcher's accuracy numbers as MLflow metrics. Per-day numbers use step = test day (1 to 7)."""
+    reports = researcher_log.catboost_reports(text)
+    if reports:
+        mlflow.log_metrics({f"week_{name}": value for name, value in reports[0].items()})
+        for day, report in enumerate(reports[1:], start=1):
+            for name, value in report.items():
+                mlflow.log_metric(f"day_{name}", value, step=day)
+    overall, by_threshold = researcher_log.payout_errors(text)
+    if overall:
+        mlflow.log_metrics({"payout_mape": overall[0], "payout_mae": overall[1]})
+        for threshold, (mape, mae) in by_threshold.items():
+            mlflow.log_metric("payout_mape_at_threshold", mape, step=threshold)
+            mlflow.log_metric("payout_mae_at_threshold", mae, step=threshold)
+
+
+def register(out_dir):
+    """Package the three files, their predictor and our wrapper as one MLflow model, registered as a new version."""
+    files = out_dir / "files"
+    files.mkdir()
+    for name in settings.MODEL_FILES:
+        shutil.copy2(out_dir / name, files / name)
+    example = pd.DataFrame([settings.EXAMPLE_VISITOR])
+    info = mlflow.pyfunc.log_model(
+        name="ranker",
+        python_model=str(settings.ROOT / "pipeline" / "ranker.py"),     # models from code: the file is stored, not pickled
+        artifacts={"files": str(files)},                                 # the three files are copied into the package
+        code_paths=[str(settings.ROOT / "bl_exp_payout_predictor.py")],  # their predictor travels with every version
+        signature=infer_signature(example),                              # the 22 request fields and their types
+        input_example=example,
+        pip_requirements=[f"{p}=={version(p)}" for p in PACKAGES],
+        registered_model_name=settings.MODEL_NAME,
+    )
+    return info.registered_model_version
+
+
+def smoke_check(model_version):
+    """Load the new version the way a server would, rank the made-up visitor, and check the answer's shape."""
+    model = mlflow.pyfunc.load_model(f"models:/{settings.MODEL_NAME}/{model_version}")
+    answer = model.predict(pd.DataFrame([settings.EXAMPLE_VISITOR]))
+    rows = [v for v in answer.values() if isinstance(v, dict)] if isinstance(answer, dict) else []
+    ranks = sorted(v["rank"] for v in rows)
+    ok = bool(rows) and ranks == list(range(1, len(rows) + 1)) and all(v["expected_payout"] > 0.01 for v in rows)
+    return ok, answer
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--mode", choices=["test", "production"], required=True)
+    args = parser.parse_args()
+    production = args.mode == "production"
+
+    settings.setup_mlflow(settings.PROD_EXPERIMENT if production else settings.EVAL_EXPERIMENT)
+    with mlflow.start_run(run_name=f"{args.mode}-{datetime.now():%Y%m%d-%H%M}") as run:
+        out_dir = settings.RUNS_DIR / run.info.run_id
+        mlflow.log_params({"mode": args.mode, "train_test": not production, **data_facts(settings.DATA_FILE),
+                           "python": python_version(), **{f"pkg_{p}": version(p) for p in PACKAGES}})
+
+        fit = ObservedFit(f"{settings.DATA_FILE.parent}/", settings.DATA_FILE.name, f"{out_dir}/",
+                          train_test=not production)
+        start = time.perf_counter()
+        fit.fit_()  # their whole pipeline, unchanged
+        mlflow.log_metric("seconds_total", time.perf_counter() - start)
+        mlflow.log_metrics({k: fit.facts.pop(k) for k in ("seconds_catboost_fit", "seconds_tabpfn_fit")})
+        mlflow.log_params({f"catboost_{k}": v for k, v in fit.facts.pop("catboost").items()})
+        mlflow.log_params({f"tabpfn_{k}": v for k, v in fit.facts.pop("tabpfn").items()})
+        mlflow.log_params(fit.facts)  # row counts of the split, its boundary, the number of features, the context size
+
+        log_file = max(out_dir.glob("log_file_bl_train_*.log"))  # the researcher's log, as their code wrote it
+        mlflow.log_artifact(str(log_file), artifact_path="researcher_log")
+        text = log_file.read_text()
+        mlflow.log_params(researcher_log.row_counts(text))
+        if not production:
+            log_accuracy(text)
+            print(f"test run {run.info.run_id}: accuracy logged")
+            return
+
+        model_version = register(out_dir)
+        ok, answer = smoke_check(model_version)
+        client = mlflow.MlflowClient()
+        client.set_model_version_tag(settings.MODEL_NAME, model_version, "smoke_check", "passed" if ok else "failed")
+        if not ok:
+            sys.exit(f"version {model_version} failed the smoke check, so @champion stays where it is. Answer: {answer}")
+        promote.promote(client, model_version)
+        print(f"production run {run.info.run_id}: {settings.MODEL_NAME} v{model_version} is now @{settings.CHAMPION}")
+
+
+if __name__ == "__main__":
+    main()
