@@ -66,5 +66,6 @@ def setup_mlflow(experiment=None):
     if experiment is not None:
         if mlflow.get_experiment_by_name(experiment) is None:
             local = not TRACKING_URI.startswith("http")
-            mlflow.create_experiment(experiment, artifact_location=(FILES_ROOT / experiment).as_uri() if local else None)
+            mlflow.create_experiment(experiment, artifact_location=(FILES_ROOT / experiment).as_uri() if local else None,
+                                     tags={"mlflow.experimentKind": "custom_model_development"})  # UI opens on "Model training"
         mlflow.set_experiment(experiment)
