@@ -33,6 +33,8 @@ docker compose up --build        # or: docker-compose up --build
 | `api` | The ranking endpoint | http://localhost:8100 |
 
 The API answers `503` on `/health` until the first champion exists (about 2 minutes after start).
+With colima on a Mac, keep the repository under your home folder: colima shares only that folder with its VM, so
+the data mount would otherwise be empty.
 
 ### Locally
 
