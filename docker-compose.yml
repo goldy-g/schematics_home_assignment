@@ -1,0 +1,58 @@
+# docker compose up --build
+#   mlflow     tracking server and model registry                               http://localhost:5001
+#   train      one weekly job at start-up (test run, then production run), so there is a champion to serve
+#   scheduler  the weekly job every Sunday 05:00, Israel time
+#   api        the ranking endpoint                                             http://localhost:8100/rank
+# Needs data/bl_full_data.csv and a .env file holding TABPFN_TOKEN (see README). Neither is ever copied into the image.
+
+x-app: &app
+  build: .
+  image: bl-ranking:latest
+  env_file: .env
+  environment:
+    MLFLOW_TRACKING_URI: http://mlflow:5000
+  volumes:
+    - ./data:/app/data:ro
+  depends_on:
+    mlflow:
+      condition: service_healthy
+
+services:
+  mlflow:
+    build: .
+    image: bl-ranking:latest
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts --serve-artifacts
+      --allowed-hosts mlflow,mlflow:5000,localhost,localhost:5001,127.0.0.1,127.0.0.1:5001
+      --workers 1
+    ports: ["5001:5000"]
+    volumes: [mlflow-data:/mlflow]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 5s
+      retries: 30
+
+  train:
+    <<: *app
+    command: python -m pipeline.weekly
+    restart: "no"
+
+  scheduler:
+    <<: *app
+    command: python -m pipeline.scheduler
+    restart: unless-stopped
+
+  api:
+    <<: *app
+    command: uvicorn serving.app:app --host 0.0.0.0 --port 8000
+    ports: ["8100:8000"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      retries: 60
+
+volumes:
+  mlflow-data:

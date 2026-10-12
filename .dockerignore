@@ -1,0 +1,11 @@
+# Keep the image small, and keep the data and the token out of it
+.git
+.venv
+.env
+data
+outputs
+mlruns
+mlflow.db
+tests
+scripts
+**/__pycache__

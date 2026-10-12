@@ -59,10 +59,12 @@ def load_env():
 
 
 def setup_mlflow(experiment=None):
-    """Point MLflow at our records. With an experiment name: create it if missing, then record new runs in it."""
+    """Point MLflow at our records. With an experiment name: create it if missing, then record new runs in it.
+    Locally the files go to the repo's mlruns/ folder; behind an MLflow server (docker compose) the server keeps them."""
     import mlflow
     mlflow.set_tracking_uri(TRACKING_URI)
     if experiment is not None:
         if mlflow.get_experiment_by_name(experiment) is None:
-            mlflow.create_experiment(experiment, artifact_location=(FILES_ROOT / experiment).as_uri())
+            local = not TRACKING_URI.startswith("http")
+            mlflow.create_experiment(experiment, artifact_location=(FILES_ROOT / experiment).as_uri() if local else None)
         mlflow.set_experiment(experiment)
