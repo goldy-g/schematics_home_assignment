@@ -1,7 +1,9 @@
-"""Time the served model the way a server uses it: load @champion once, then rank one visitor per call.
+"""Time the served model the way a server uses it: load a version once, then rank one visitor per call.
 
-Usage: .venv/bin/python scripts/ranker_speed.py [calls]      (default 10 calls)
+Usage: .venv/bin/python scripts/ranker_speed.py [calls] [version]     (default: 10 calls, @champion)
+Prints the load time, the per-call times and the process's peak memory (task 1.12 compares versions with it).
 """
+import resource
 import statistics
 import sys
 import time
@@ -18,10 +20,11 @@ import mlflow  # noqa: E402
 def main():
     calls = int(sys.argv[1]) if len(sys.argv) > 1 else 10
     settings.setup_mlflow()
-    champion = mlflow.MlflowClient().get_model_version_by_alias(settings.MODEL_NAME, settings.CHAMPION).version
+    version = sys.argv[2] if len(sys.argv) > 2 else (
+        mlflow.MlflowClient().get_model_version_by_alias(settings.MODEL_NAME, settings.CHAMPION).version)
     start = time.perf_counter()
-    model = mlflow.pyfunc.load_model(f"models:/{settings.MODEL_NAME}@{settings.CHAMPION}")
-    print(f"load @champion (v{champion}): {time.perf_counter() - start:.1f} s")
+    model = mlflow.pyfunc.load_model(f"models:/{settings.MODEL_NAME}/{version}")
+    print(f"load v{version}: {time.perf_counter() - start:.1f} s")
     ranker = model.unwrap_python_model()
     seconds, sources, ranking = [], [], None
     for _ in range(calls):
@@ -32,6 +35,7 @@ def main():
     ordered = sorted(seconds)
     print(f"{calls} calls: median {statistics.median(seconds):.2f} s, p90 {ordered[int(0.9 * (calls - 1))]:.2f} s, "
           f"max {ordered[-1]:.2f} s, fallbacks {sources.count('fallback')}")
+    print(f"peak memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**30:.2f} GB")  # bytes on macOS
     print("ranking:", {brand: (int(v["rank"]), round(v["expected_payout"], 2)) for brand, v in ranking.items()})
 
 
