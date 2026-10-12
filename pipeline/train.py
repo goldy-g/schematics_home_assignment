@@ -6,7 +6,9 @@
 Their code (bl_models_train.py) runs unchanged. This file records what happens around it.
 """
 import argparse
+import gzip
 import hashlib
+import json
 import os
 import shutil
 import sys
@@ -101,6 +103,16 @@ def save_tabpfn_fit(files):
     tabpfn.save_model(files / settings.TABPFN_FIT_FILE)
 
 
+def save_first_name_gender(path):
+    """Task 1.12: write the part of the names database their gender feature reads (FirstNameGender in ranker.py reads it).
+    Built from the full database their trainer already loaded, with the same keys and the same shares."""
+    names = {"M": "Male", "F": "Female"}
+    table = {name: {names[code]: share for code, share in info["gender"].items()}
+             for name, info in theirs.nd.first_names.items() if info["gender"]}
+    with gzip.open(path, "wt") as f:
+        json.dump(table, f, separators=(",", ":"))
+
+
 def register(out_dir):
     """Package the three files, the saved TabPFN fit, their predictor and our wrapper as one MLflow model,
     registered as a new version."""
@@ -109,6 +121,7 @@ def register(out_dir):
     for name in settings.MODEL_FILES:
         shutil.copy2(out_dir / name, files / name)
     save_tabpfn_fit(files)
+    save_first_name_gender(files / settings.FIRST_NAMES_FILE)
     example = pd.DataFrame([settings.EXAMPLE_VISITOR])
     info = mlflow.pyfunc.log_model(
         name="ranker",
@@ -118,7 +131,8 @@ def register(out_dir):
         signature=infer_signature(example),                              # the 22 request fields and their types
         input_example=example,
         model_config={"tabpfn_model": settings.TABPFN_MODEL, "tabpfn_fit_mode": settings.TABPFN_FIT_MODE,
-                      "tabpfn_fit_file": settings.TABPFN_FIT_FILE, "payout_deadline_s": settings.PAYOUT_DEADLINE_S},
+                      "tabpfn_fit_file": settings.TABPFN_FIT_FILE, "payout_deadline_s": settings.PAYOUT_DEADLINE_S,
+                      "first_names_file": settings.FIRST_NAMES_FILE},
         pip_requirements=[f"{p}=={version(p)}" for p in PACKAGES],
         registered_model_name=settings.MODEL_NAME,
     )

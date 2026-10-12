@@ -26,6 +26,7 @@ TIMEZONE = "Asia/Jerusalem"
 TABPFN_MODEL = "v3.5_default"
 TABPFN_FIT_MODE = "fit_with_cache"
 TABPFN_FIT_FILE = "tabpfn_fit.json"   # the saved fit, stored inside each model version
+FIRST_NAMES_FILE = "first_name_gender.json.gz"  # task 1.12: the part of the names database their code reads
 PAYOUT_DEADLINE_S = float(os.environ.get("PAYOUT_DEADLINE_S", "2.0"))
 
 # The three files their trainer writes in production mode, which the predictor reads

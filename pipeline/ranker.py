@@ -4,8 +4,12 @@ MLflow stores this file inside every registered version ("models from code"), to
 three model files and the saved TabPFN fit. A version is self-contained: the files, the code that reads them, the
 package list and its settings (model_config).
 """
+import gzip
+import json
 import os
+import sys
 import threading
+import types
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -37,14 +41,50 @@ class PayoutWithDeadline:
             return rows["client_name"].map(self.median_by_brand).fillna(self.median_all).to_numpy()
 
 
+class FirstNameGender:
+    """Task 1.12: the names database, cut to the one thing their code reads from it.
+
+    Their predictor runs `nd = NameDataset()` when imported (names-dataset: 2.1 GB of memory, 2.7 s) and uses it only in
+    detect_gender_with_confidence(), which reads search(first_name)["first_name"]["gender"]. This keeps exactly that:
+    every first name that has a gender, with the same shares, behind the same search(). Training writes the table
+    from the full database; scripts/names_table_check.py proves the answers are identical."""
+
+    def __init__(self, path):
+        with gzip.open(path, "rt") as f:
+            self.table = json.load(f)
+
+    def search(self, name):
+        gender = self.table.get(name.strip().title())  # the same key normalisation as names_dataset
+        return {"first_name": None if gender is None else {"gender": dict(gender)}, "last_name": None}
+
+    def import_predictor(self):
+        """Import their predictor with this table standing in for the names_dataset package, then put it back."""
+        saved = sys.modules.get("names_dataset")
+        stand_in = types.ModuleType("names_dataset")
+        stand_in.NameDataset = lambda *args, **kwargs: self
+        sys.modules["names_dataset"] = stand_in
+        try:
+            import bl_exp_payout_predictor as theirs
+        finally:
+            if saved is None:
+                sys.modules.pop("names_dataset", None)
+            else:
+                sys.modules["names_dataset"] = saved
+        theirs.nd = self  # in case this process imported it earlier with the full database
+        return theirs
+
+
 class BrandRanker(mlflow.pyfunc.PythonModel):
     def load_context(self, context):
         # Runs ONCE, when a server (or the smoke check) loads this version.
-        import bl_exp_payout_predictor as theirs  # their file, unchanged; importing it loads the names database
         from catboost import CatBoostClassifier
 
         config = context.model_config
         files = Path(context.artifacts["files"])
+        if "first_names_file" in config:  # versions from 1.12 on carry the small table
+            theirs = FirstNameGender(files / config["first_names_file"]).import_predictor()
+        else:  # older versions: their import, which loads the full names database
+            import bl_exp_payout_predictor as theirs
         log_dir = os.environ.get("BL_LOG_DIR", str(Path.cwd() / "outputs" / "serving_logs"))
         self.theirs = theirs
         self.predictor = theirs.BLPayoutModelsPredict(f"{files}/", None, log_dir)  # their constructor: one log file per load
