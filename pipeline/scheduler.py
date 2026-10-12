@@ -6,6 +6,7 @@
 The rule is cron's "0 5 * * 0", read in Asia/Jerusalem time, so the job stays at 05:00 local when the clocks change.
 """
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -43,7 +44,7 @@ def main():
         while (seconds_left := (when - datetime.now(ZONE)).total_seconds()) > 0:
             time.sleep(min(seconds_left, 60))  # check every minute, so a sleeping laptop or a clock change can't skip it
         # A separate process: if the job crashes, the scheduler keeps going, and the job's memory is freed when it ends.
-        result = subprocess.run([sys.executable, "-m", "pipeline.weekly"])
+        result = subprocess.run([sys.executable, "-m", "pipeline.weekly"], env={**os.environ, "BL_TRIGGER": "scheduler"})
         print(f"weekly run finished, exit code {result.returncode}", flush=True)
 
 

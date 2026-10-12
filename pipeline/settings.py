@@ -17,7 +17,7 @@ PREVIOUS = "previous"                                # alias: the version before
 
 # The weekly job (briefing: "Schedule the production run weekly, Sunday 05:00"), read in Israel time.
 # Cron fields: minute 0, hour 5, any day of the month, any month, day of week 0 = Sunday.
-WEEKLY_CRON = "0 5 * * 0"
+WEEKLY_CRON = os.environ.get("BL_WEEKLY_CRON", "0 5 * * 0")  # override only to test the scheduler
 TIMEZONE = "Asia/Jerusalem"
 
 # TabPFN (task 1.8, measured in scripts/tabpfn_options.py). Their code leaves the model to the server's default, "auto",

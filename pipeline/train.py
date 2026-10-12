@@ -7,6 +7,7 @@ Their code (bl_models_train.py) runs unchanged. This file records what happens a
 """
 import argparse
 import hashlib
+import os
 import shutil
 import sys
 import time
@@ -139,6 +140,7 @@ def run(mode, evaluation_run_id=None):
     production = mode == "production"
     settings.setup_mlflow(settings.PROD_EXPERIMENT if production else settings.EVAL_EXPERIMENT)
     with mlflow.start_run(run_name=f"{mode}-{datetime.now():%Y%m%d-%H%M}") as run:
+        mlflow.set_tag("trigger", os.environ.get("BL_TRIGGER", "manual"))  # "scheduler" when the scheduler started it
         if evaluation_run_id:
             mlflow.set_tag("evaluation_run_id", evaluation_run_id)  # the test run that scored this same data and code
         out_dir = settings.RUNS_DIR / run.info.run_id
