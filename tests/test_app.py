@@ -13,7 +13,7 @@ class StandInRanker:
 class PlainPyfuncModel:
     """A model with only MLflow's standard predict(), no rank()."""
     def predict(self, frame):
-        assert isinstance(frame.loc[0, "sub1"], str)  # numbers are turned into text, as their code would
+        assert isinstance(frame.loc[0, "sub1"], str)  # numbers are turned into text, as the original code would
         return {"xlt": {"rank": 1.0, "expected_payout": 3.0}}
 
 

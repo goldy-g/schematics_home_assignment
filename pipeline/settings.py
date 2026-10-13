@@ -2,9 +2,9 @@
 import os
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]           # the repo; their two scripts sit here
-DATA_FILE = ROOT / "data" / "bl_full_data.csv"       # git-ignored copy of their CSV
-RUNS_DIR = ROOT / "outputs" / "runs"                 # where their trainer writes its files during a run (git-ignored)
+ROOT = Path(__file__).resolve().parents[1]           # the repo; the two original scripts sit here
+DATA_FILE = ROOT / "data" / "bl_full_data.csv"       # git-ignored copy of the provided CSV
+RUNS_DIR = ROOT / "outputs" / "runs"                 # where the original trainer writes during a run (git-ignored)
 
 # MLflow: a database for the records, a folder for the files (both git-ignored)
 TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", f"sqlite:///{ROOT / 'mlflow.db'}")
@@ -21,20 +21,21 @@ WEEKLY_CRON = os.environ.get("BL_WEEKLY_CRON", "0 5 * * 0")  # override only to 
 TIMEZONE = "Asia/Jerusalem"
 
 # TabPFN (the choices are measured in scripts/tabpfn_options.py). The brief specifies TabPFN v3 ("tabpfn-client (v3.0)";
-# the client package itself is 0.6.x). Their code never names a model, so the server's default, "auto", decides, and it
-# has already moved to v3.5 without notice. We pin v3, fit once with the server-side cache, and give every request a
-# deadline: past it, the ranking falls back to CatBoost's P(lead) x the brand's median payout. v3.5 measured more
-# accurate (payout MAPE 5.43% vs 6.84%); moving to it is the researcher's call, and one setting: TABPFN_MODEL=v3.5_default.
+# the client package itself is 0.6.x). The original code never names a model, so the server's default, "auto", decides,
+# and it has already moved to v3.5 without notice. The pipeline pins v3, fits once with the server-side cache, and gives
+# every request a deadline: past it, the ranking falls back to CatBoost's P(lead) x the brand's median payout. v3.5
+# measured more accurate (payout MAPE 5.43% vs 6.84%); moving to it is the researcher's call, and one setting:
+# TABPFN_MODEL=v3.5_default.
 TABPFN_MODEL = os.environ.get("TABPFN_MODEL", "v3_default")
 TABPFN_FIT_MODE = "fit_with_cache"
 TABPFN_FIT_FILE = "tabpfn_fit.json"   # the saved fit, stored inside each model version
-FIRST_NAMES_FILE = "first_name_gender.json.gz"  # the part of the names database their code reads
+FIRST_NAMES_FILE = "first_name_gender.json.gz"  # the part of the names database the original code reads
 PAYOUT_DEADLINE_S = float(os.environ.get("PAYOUT_DEADLINE_S", "2.0"))
 
-# The three files their trainer writes in production mode, which the predictor reads
+# The three files the original trainer writes in production mode, which the predictor reads
 MODEL_FILES = ("CB_bl_lead.cbm", "payout_tfm_context.joblib", "all_clients.csv")
 
-# A made-up visitor in the request format (their predictor's 22 fields); no real person. MLflow stores it as the
+# A made-up visitor in the request format (the original predictor's 22 fields); no real person. MLflow stores it as the
 # model's input example, and the smoke check scores it. Types follow the CSV: sub1-sub3 as text, ids and phone as numbers.
 EXAMPLE_VISITOR = {
     "session_dt": "2026-02-10 14:02:11", "conversion_dt": "2026-02-10 14:04:40", "register_date": "2026-02-10 14:04:38",
@@ -62,7 +63,7 @@ def load_env():
 
 
 def setup_mlflow(experiment=None):
-    """Point MLflow at our records. With an experiment name: create it if missing, then record new runs in it.
+    """Point MLflow at the project's records. With an experiment name: create it if missing, then record new runs in it.
     Locally the files go to the repo's mlruns/ folder; behind an MLflow server (docker compose) the server keeps them."""
     import mlflow
     mlflow.set_tracking_uri(TRACKING_URI)

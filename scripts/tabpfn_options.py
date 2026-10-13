@@ -1,12 +1,12 @@
 """Measure ways to call TabPFN for one ranking request, and pick the most efficient.
 
-Every option uses the production context (1,000 rows) and the same 10 request rows: their predictor's features for
-the made-up visitor, one row per brand.
-  A  as given             fit + predict on every request (their predictor)
+Every option uses the production context (1,000 rows) and the same 10 request rows: the original predictor's
+features for the made-up visitor, one row per brand.
+  A  as given             fit + predict on every request (the original predictor)
   B  fit once             fit at start-up, predict per request
   C  fit once, cached     fit_mode="fit_with_cache": Prior Labs keeps the fitted context, predict per request
   D  saved fit            C's fit saved with save_model; a fresh estimator loads it and only predicts
-C runs for three model versions. Then each version's payout accuracy on the test week (their test-mode split).
+C runs for three model versions. Then each version's payout accuracy on the test week (the original test-mode split).
 Writes outputs/tabpfn_options/results.json.  Usage: .venv/bin/python scripts/tabpfn_options.py
 """
 import json
@@ -80,7 +80,7 @@ def main():
     results["A as given (fit + predict)"] = {"seconds_each": [round(w, 2) for w in walls], "median_s": round(statistics.median(walls), 2)}
     print(f"A as given (fit + predict)          calls {results['A as given (fit + predict)']['seconds_each']}", flush=True)
 
-    # B: fit once, predict per request (what our ranker does today)
+    # B: fit once, predict per request (what the served ranker does)
     model = TabPFNRegressor(ignore_pretraining_limits=True)
     model.fit(x, y)
     measure("B fit once (auto model)", model, rows, reference)
@@ -106,12 +106,12 @@ def main():
         reloaded = TabPFNRegressor.load_model(record)
         measure("D saved fit, v3.5 reloaded", reloaded, rows, reference, repeats=3)
 
-    # Accuracy of each version on the test week, with their own test-mode split and context
+    # Accuracy of each version on the test week, with the original test-mode split and context
     trainer = their_trainer.BLPayoutModelsFit(f"{settings.DATA_FILE.parent}/", settings.DATA_FILE.name, f"{OUT}/eval/", train_test=True)
     x_train, y_train, x_test, y_test = trainer.bl_preprocessing()
     x_pay, y_pay = trainer.prepare_for_cont_payout_prediction_train(x_train, y_train)
     x_test_pay, y_test_pay = trainer.prepare_for_cont_payout_prediction_test(x_test, y_test)
-    _, test_context = trainer.tabpfn_regression_payout(x_pay, y_pay)  # their context: the newest 1,000 paid rows
+    _, test_context = trainer.tabpfn_regression_payout(x_pay, y_pay)  # the original context: the newest 1,000 paid rows
     for version in ["auto"] + VERSIONS:
         try:
             model = TabPFNRegressor(ignore_pretraining_limits=True, model_path=version)

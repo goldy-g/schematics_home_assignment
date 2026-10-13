@@ -1,14 +1,14 @@
-"""The ranking endpoint: one visitor's survey answers in, their ranked brand dictionary out.
+"""The ranking endpoint: one visitor's survey answers in, the ranked brand dictionary out.
 
     uvicorn serving.app:app --port 8000
 
-    POST /rank      the visitor (their predictor's 22 fields)  ->  {brand: {"rank": 1.0, "expected_payout": 42.31}, ...}
+    POST /rank      the visitor (the predictor's 22 fields)  ->  {brand: {"rank": 1.0, "expected_payout": 42.31}, ...}
     GET  /health    200 once a model is loaded, 503 before that
     GET  /version   which registered version is being served
     POST /reload    load the version @champion points at now (the server also checks every minute)
 
-The body keeps their exact format. Two headers say how the answer was made: X-Model-Version, and X-Payout-Source
-("tabpfn", or "fallback" when TabPFN missed its deadline).
+The body keeps the original predictor's exact format. Two headers say how the answer was made: X-Model-Version, and
+X-Payout-Source ("tabpfn", or "fallback" when TabPFN missed its deadline).
 """
 import os
 import threading
@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from pipeline import settings
 
 settings.load_env()
-os.environ.setdefault("BL_LOG_DIR", str(settings.ROOT / "outputs" / "serving_logs"))  # their predictor's log file
+os.environ.setdefault("BL_LOG_DIR", str(settings.ROOT / "outputs" / "serving_logs"))  # the predictor's log file
 
 import mlflow  # noqa: E402
 import pandas as pd  # noqa: E402
@@ -33,8 +33,8 @@ reload_lock = threading.Lock()
 
 
 class Visitor(BaseModel):
-    """Their predictor's 22 fields. Numbers are accepted where their own example sends numbers (campaign_id, sub1,
-    sub3, cellphone); their code turns sub1-sub3 into text. Note: in the data sub1 is text with a leading zero
+    """The original predictor's 22 fields. Numbers are accepted where its own example sends numbers (campaign_id, sub1,
+    sub3, cellphone); the original code turns sub1-sub3 into text. Note: in the data sub1 is text with a leading zero
     ("01121993"), so sending it as a number gives a value training never saw."""
     session_dt: str
     conversion_dt: str | None = None
@@ -91,8 +91,8 @@ def watch_champion():
 
 
 def answer(visitor):
-    """Our versions have rank(), which also says where the payout came from. A model without it (any standard MLflow
-    pyfunc) is served through predict(), with the types its stored signature expects."""
+    """Versions built by this pipeline have rank(), which also says where the payout came from. A model without it
+    (any standard MLflow pyfunc) is served through predict(), with the types its stored signature expects."""
     if hasattr(state["ranker"], "rank"):
         return state["ranker"].rank(visitor)
     row = dict(visitor, campaign_id=int(visitor["campaign_id"]), cellphone=int(visitor["cellphone"]),
@@ -115,7 +115,7 @@ def rank(visitor: Visitor, response: Response):
     ranker = state["ranker"]
     if ranker is None:
         raise HTTPException(503, "the model is still loading")
-    if visitor.register_date is None:  # their code raises a bare Exception here (their L66-67): answer it as a 422
+    if visitor.register_date is None:  # the original code raises a bare Exception here (its L66-67): answer it as a 422
         raise HTTPException(422, "user cannot be a lead - register_date is absent")
     ranking, source = answer(visitor.model_dump())
     response.headers["X-Model-Version"] = state["version"]

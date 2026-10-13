@@ -1,4 +1,4 @@
-"""The small first-name table answers their gender feature like the names database does (names made up).
+"""The small first-name table answers the original gender feature like the names database does (names made up).
 The full proof, over every name in the database and the data, is scripts/names_table_check.py."""
 import gzip
 import json
@@ -25,11 +25,11 @@ def test_search_matches_names_dataset_shape(tmp_path):
 def test_their_gender_function_reads_it(tmp_path):
     names = small(tmp_path)
     saved = sys.modules.get("bl_exp_payout_predictor")
-    theirs = names.import_predictor()
+    original = names.import_predictor()
     try:
-        detect = theirs.BLPayoutModelsPredict.detect_gender_with_confidence
+        detect = original.BLPayoutModelsPredict.detect_gender_with_confidence
         assert detect(None, "Dana") == ("female", 0.8)
-        assert detect(None, "Noam") == ("male", 0.5)  # a tie goes to "male", as in their code
+        assert detect(None, "Noam") == ("male", 0.5)  # a tie goes to "male", as in the original code
         assert detect(None, "Ziv") == ("male", 1.0)
         assert detect(None, "Nobody") == ("unknown", 0.0)
         stand_in_left = "names_dataset" in sys.modules and not hasattr(sys.modules["names_dataset"], "__file__")

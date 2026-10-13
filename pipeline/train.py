@@ -1,9 +1,9 @@
-"""Run their training in one mode, recorded as one MLflow run.
+"""Run the researcher's training in one mode, recorded as one MLflow run.
 
     python -m pipeline.train --mode test         train on older data, score the newest week, log the accuracy
     python -m pipeline.train --mode production   train, register a new model version, check it, make it the champion
 
-Their code (bl_models_train.py) runs unchanged. This file records what happens around it.
+The original code (bl_models_train.py) runs unchanged. This file records what happens around it.
 """
 import argparse
 import gzip
@@ -28,19 +28,20 @@ import pandas as pd  # noqa: E402
 from mlflow.models import infer_signature  # noqa: E402
 from tabpfn_client import TabPFNRegressor  # noqa: E402
 
-import bl_models_train as theirs  # noqa: E402  (their file; importing it loads the names database, about 3 s)
+import bl_models_train as original  # noqa: E402  (the researcher's file; importing it loads the names database, ~3 s)
 from pipeline import promote, researcher_log  # noqa: E402
 
-# Pin TabPFN's model inside their trainer: the same class with one argument preset; their file stays unchanged.
+# Pin TabPFN's model inside the original trainer: the same class with one argument preset; the file stays unchanged.
 # Without it, Prior Labs' default ("auto") answers, and that can change between this run and serving.
-theirs.TabPFNRegressor = partial(TabPFNRegressor, model_path=settings.TABPFN_MODEL)
+original.TabPFNRegressor = partial(TabPFNRegressor, model_path=settings.TABPFN_MODEL)
 
 PACKAGES = ("pandas", "numpy", "scikit-learn", "joblib", "catboost", "names-dataset", "tabpfn-client", "mlflow")
 TABPFN_SETTINGS = ("model_path", "n_estimators", "fit_mode", "random_state", "ignore_pretraining_limits")
 
 
-class ObservedFit(theirs.BLPayoutModelsFit):
-    """Their class, plus notes taken around three of its steps. Each override calls theirs and changes nothing."""
+class ObservedFit(original.BLPayoutModelsFit):
+    """The researcher's class, plus notes taken around three of its steps. Each override calls the original method and
+    changes nothing."""
 
     def __init__(self, *args, **kwargs):
         self.facts = {}
@@ -104,17 +105,17 @@ def save_tabpfn_fit(files):
 
 
 def save_first_name_gender(path):
-    """Write the part of the names database their gender feature reads (FirstNameGender in ranker.py reads it).
-    Built from the full database their trainer already loaded, with the same keys and the same shares."""
+    """Write the part of the names database the gender feature reads (FirstNameGender in ranker.py reads it).
+    Built from the full database the original trainer already loaded, with the same keys and the same shares."""
     names = {"M": "Male", "F": "Female"}
     table = {name: {names[code]: share for code, share in info["gender"].items()}
-             for name, info in theirs.nd.first_names.items() if info["gender"]}
+             for name, info in original.nd.first_names.items() if info["gender"]}
     with gzip.open(path, "wt") as f:
         json.dump(table, f, separators=(",", ":"))
 
 
 def register(out_dir):
-    """Package the three files, the saved TabPFN fit, their predictor and our wrapper as one MLflow model,
+    """Package the three files, the saved TabPFN fit, the original predictor and the wrapper as one MLflow model,
     registered as a new version."""
     files = out_dir / "files"
     files.mkdir()
@@ -127,8 +128,8 @@ def register(out_dir):
         name="ranker",
         python_model=str(settings.ROOT / "pipeline" / "ranker.py"),     # models from code: the file is stored, not pickled
         artifacts={"files": str(files)},                                 # the three files are copied into the package
-        code_paths=[str(settings.ROOT / "bl_exp_payout_predictor.py")],  # their predictor travels with every version
-        signature=infer_signature(example),                              # the 22 request fields and their types
+        code_paths=[str(settings.ROOT / "bl_exp_payout_predictor.py")],  # the original predictor, in every version
+        signature=infer_signature(example),                              # the 22 request fields and types
         input_example=example,
         model_config={"tabpfn_model": settings.TABPFN_MODEL, "tabpfn_fit_mode": settings.TABPFN_FIT_MODE,
                       "tabpfn_fit_file": settings.TABPFN_FIT_FILE, "payout_deadline_s": settings.PAYOUT_DEADLINE_S,
@@ -164,14 +165,14 @@ def run(mode, evaluation_run_id=None):
         fit = ObservedFit(f"{settings.DATA_FILE.parent}/", settings.DATA_FILE.name, f"{out_dir}/",
                           train_test=not production)
         start = time.perf_counter()
-        fit.fit_()  # their whole pipeline, unchanged
+        fit.fit_()  # the researcher's whole pipeline, unchanged
         mlflow.log_metric("seconds_total", time.perf_counter() - start)
         mlflow.log_metrics({k: fit.facts.pop(k) for k in ("seconds_catboost_fit", "seconds_tabpfn_fit")})
         mlflow.log_params({f"catboost_{k}": v for k, v in fit.facts.pop("catboost").items()})
         mlflow.log_params({f"tabpfn_{k}": v for k, v in fit.facts.pop("tabpfn").items()})
         mlflow.log_params(fit.facts)  # row counts of the split, its boundary, the number of features, the context size
 
-        log_file = max(out_dir.glob("log_file_bl_train_*.log"))  # the researcher's log, as their code wrote it
+        log_file = max(out_dir.glob("log_file_bl_train_*.log"))  # the researcher's log, as the original code wrote it
         mlflow.log_artifact(str(log_file), artifact_path="researcher_log")
         text = log_file.read_text()
         mlflow.log_params(researcher_log.row_counts(text))

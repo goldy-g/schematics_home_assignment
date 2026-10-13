@@ -1,8 +1,8 @@
-"""The served model: their feature and scoring code with the models loaded once, ranking the brands for one visitor.
+"""The served model: the original feature and scoring code, models loaded once, ranking the brands for one visitor.
 
-MLflow stores this file inside every registered version ("models from code"), together with their predictor file, the
-three model files and the saved TabPFN fit. A version is self-contained: the files, the code that reads them, the
-package list and its settings (model_config).
+MLflow stores this file inside every registered version ("models from code"), together with the original predictor
+file, the three model files and the saved TabPFN fit. A version is self-contained: the files, the code that reads them,
+the package list and its settings (model_config).
 """
 import gzip
 import json
@@ -19,8 +19,8 @@ import pandas as pd
 
 
 class PayoutWithDeadline:
-    """Takes TabPFN's place inside their scoring function: the same predict(rows), but it never waits past the deadline.
-    If TabPFN is late or fails (network, quota), each row gets its brand's median payout from the context instead."""
+    """Takes TabPFN's place inside the original scoring function: the same predict(rows), but it never waits past the
+    deadline. If TabPFN is late or fails (network, quota), each row gets its brand's median payout from the context."""
 
     def __init__(self, tabpfn, context, deadline_s):
         self.tabpfn, self.deadline_s = tabpfn, deadline_s
@@ -42,12 +42,12 @@ class PayoutWithDeadline:
 
 
 class FirstNameGender:
-    """The names database, cut to the one thing their code reads from it.
+    """The names database, cut to the one thing the original code reads from it.
 
-    Their predictor runs `nd = NameDataset()` when imported (names-dataset: 2.1 GB of memory, 2.7 s) and uses it only in
-    detect_gender_with_confidence(), which reads search(first_name)["first_name"]["gender"]. This keeps exactly that:
-    every first name that has a gender, with the same shares, behind the same search(). Training writes the table
-    from the full database; scripts/names_table_check.py proves the answers are identical."""
+    The original predictor runs `nd = NameDataset()` when imported (names-dataset: 2.1 GB of memory, 2.7 s) and uses
+    it only in detect_gender_with_confidence(), which reads search(first_name)["first_name"]["gender"]. This keeps
+    exactly that: every first name that has a gender, with the same shares, behind the same search(). Training writes
+    the table from the full database; scripts/names_table_check.py proves the answers are identical."""
 
     def __init__(self, path):
         with gzip.open(path, "rt") as f:
@@ -58,20 +58,20 @@ class FirstNameGender:
         return {"first_name": None if gender is None else {"gender": dict(gender)}, "last_name": None}
 
     def import_predictor(self):
-        """Import their predictor with this table standing in for the names_dataset package, then put it back."""
+        """Import the original predictor with this table standing in for the names_dataset package, then put it back."""
         saved = sys.modules.get("names_dataset")
         stand_in = types.ModuleType("names_dataset")
         stand_in.NameDataset = lambda *args, **kwargs: self
         sys.modules["names_dataset"] = stand_in
         try:
-            import bl_exp_payout_predictor as theirs
+            import bl_exp_payout_predictor as original
         finally:
             if saved is None:
                 sys.modules.pop("names_dataset", None)
             else:
                 sys.modules["names_dataset"] = saved
-        theirs.nd = self  # in case this process imported it earlier with the full database
-        return theirs
+        original.nd = self  # in case this process imported it earlier with the full database
+        return original
 
 
 class BrandRanker(mlflow.pyfunc.PythonModel):
@@ -82,13 +82,13 @@ class BrandRanker(mlflow.pyfunc.PythonModel):
         config = context.model_config
         files = Path(context.artifacts["files"])
         if "first_names_file" in config:  # versions from 1.12 on carry the small table
-            theirs = FirstNameGender(files / config["first_names_file"]).import_predictor()
-        else:  # older versions: their import, which loads the full names database
-            import bl_exp_payout_predictor as theirs
+            original = FirstNameGender(files / config["first_names_file"]).import_predictor()
+        else:  # older versions: the original import, which loads the full names database
+            import bl_exp_payout_predictor as original
         log_dir = os.environ.get("BL_LOG_DIR", str(Path.cwd() / "outputs" / "serving_logs"))
-        self.theirs = theirs
-        self.predictor = theirs.BLPayoutModelsPredict(f"{files}/", None, log_dir)  # their constructor: one log file per load
-        # Our loader replaces their load_models(), which re-fitted TabPFN on every request. Same files, same models.
+        self.original = original
+        self.predictor = original.BLPayoutModelsPredict(f"{files}/", None, log_dir)  # one log file per load
+        # This replaces the original load_models(), which re-fitted TabPFN on every request. Same files, same models.
         tfm_context = joblib.load(files / "payout_tfm_context.joblib")
         self.columns = tfm_context["columns"]
         self.catboost = CatBoostClassifier(allow_writing_files=False).load_model(str(files / "CB_bl_lead.cbm"), format="cbm")
@@ -117,12 +117,12 @@ class BrandRanker(mlflow.pyfunc.PythonModel):
         return tabpfn
 
     def rank(self, visitor):
-        """One visitor's answers in; their ranked dict and the payout source ("tabpfn" or "fallback") out."""
-        with self.lock:  # their feature code reads the visitor from a module-level variable (their L58): one at a time
-            self.theirs.user_data = visitor
+        """One visitor's answers in; the ranked dict and the payout source ("tabpfn" or "fallback") out."""
+        with self.lock:  # the original code reads the visitor from a module-level variable (its L58): one at a time
+            self.original.user_data = visitor
             rows = self.predictor.bl_preprocessing()
         if rows.shape[0] == 0:
-            return {"expected_payout": 0, "prob_lead": 0}, "none"  # their answer for a too-incomplete survey (L239)
+            return {"expected_payout": 0, "prob_lead": 0}, "none"  # as the original code answers a thin survey (L239)
         ranking = self.predictor.prediction_expected_payout(rows, self.payout, self.columns, self.catboost)
         return ranking, self.payout.source.value
 

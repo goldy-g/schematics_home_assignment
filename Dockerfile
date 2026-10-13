@@ -8,7 +8,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Their two files, unchanged, and our code. The data and the TabPFN token are never baked in: they arrive at run time.
+# The two original files, unchanged, and the pipeline code. The data and the TabPFN token are never baked in:
+# they arrive at run time.
 COPY bl_models_train.py bl_exp_payout_predictor.py ./
 COPY pipeline/ pipeline/
 COPY serving/ serving/

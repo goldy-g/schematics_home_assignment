@@ -1,6 +1,6 @@
 """Point @champion at a model version. Promotion and rollback are the same move.
 
-    python -m pipeline.promote                 list the versions and their aliases
+    python -m pipeline.promote                 list each version and its aliases
     python -m pipeline.promote --version 3     make version 3 the champion
     python -m pipeline.promote --rollback      swap @champion and @previous
 """

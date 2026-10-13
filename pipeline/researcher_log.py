@@ -1,6 +1,6 @@
 """Read the numbers out of the researcher's log, so MLflow can compare runs. The log itself is saved as it is.
 
-Their log holds: three row counts, then (test mode only) CatBoost reports for the whole test week and for each test
+The log holds: three row counts, then (test mode only) CatBoost reports for the whole test week and for each test
 day, then TabPFN's payout errors overall and for predictions at or above $5, $10, $15 and $20.
 """
 import re
@@ -13,7 +13,7 @@ ROW_COUNTS = {
 
 
 def row_counts(text):
-    """How many rows survived each of their filters."""
+    """How many rows survived each of the original filters."""
     return {name: int(m.group(1)) for name, pattern in ROW_COUNTS.items() if (m := re.search(pattern, text))}
 
 

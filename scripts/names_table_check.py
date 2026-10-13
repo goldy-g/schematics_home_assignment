@@ -2,8 +2,8 @@
 
     .venv/bin/python scripts/names_table_check.py
 
-Their gender feature (detect_gender_with_confidence, the predictor's copy) is called twice per name: once with the full
-names-dataset (their import) and once with FirstNameGender, the table every version carries. Names
+The original gender feature (detect_gender_with_confidence, the predictor's copy) is called twice per name: once with
+the full names-dataset (the original import) and once with FirstNameGender, the table every version carries. Names
 checked: every first name and every last name in the database, each also lower-cased and padded with spaces, and every
 first name in the data file, written as it arrives. Only counts are printed, never a name. Results:
 outputs/names_table_check.json.
@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from pipeline import settings  # noqa: E402
 
-LOAD = {  # each in a fresh process: seconds to import their predictor, and the process's peak memory
+LOAD = {  # each in a fresh process: seconds to import the original predictor, and the process's peak memory
     "full": "import time; t = time.perf_counter(); import bl_exp_payout_predictor; t = time.perf_counter() - t",
     "small": ("import time, sys; sys.path.insert(0, 'pipeline'); from ranker import FirstNameGender; "
               "t = time.perf_counter(); FirstNameGender(sys.argv[1]).import_predictor(); t = time.perf_counter() - t"),
@@ -37,11 +37,11 @@ def measure(kind, table_path):
 
 def main():
     import pandas as pd
-    import bl_exp_payout_predictor as theirs  # the full database, as their code loads it
+    import bl_exp_payout_predictor as original  # the full database, as the original code loads it
     sys.path.insert(0, str(ROOT / "pipeline"))
     from ranker import FirstNameGender
 
-    full = theirs.nd
+    full = original.nd
     names = {"M": "Male", "F": "Female"}
     table = {name: {names[code]: share for code, share in info["gender"].items()}
              for name, info in full.first_names.items() if info["gender"]}
@@ -53,17 +53,17 @@ def main():
     data = pd.read_csv(settings.DATA_FILE, usecols=["fname"], low_memory=False)["fname"].dropna().astype(str)
     keys = list(full.first_names) + list(full.last_names)
     candidates = keys + [k.lower() for k in keys] + [f"  {k} " for k in keys[:50_000]]
-    candidates += [str(x).strip().capitalize() for x in data]  # what their code passes in (their L190)
+    candidates += [str(x).strip().capitalize() for x in data]  # what the original code passes in (its L190)
 
-    detect = theirs.BLPayoutModelsPredict.detect_gender_with_confidence  # their function; it reads the global nd
+    detect = original.BLPayoutModelsPredict.detect_gender_with_confidence  # reads the module's global nd
     start, mismatches = time.perf_counter(), 0
     for name in candidates:
-        theirs.nd = full
+        original.nd = full
         expected = detect(None, name)
-        theirs.nd = small
+        original.nd = small
         if detect(None, name) != expected:
             mismatches += 1
-    theirs.nd = full
+    original.nd = full
 
     result = {
         "names_checked": len(candidates), "mismatches": mismatches, "seconds_to_check": round(time.perf_counter() - start),
