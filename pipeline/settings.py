@@ -20,10 +20,12 @@ PREVIOUS = "previous"                                # alias: the version before
 WEEKLY_CRON = os.environ.get("BL_WEEKLY_CRON", "0 5 * * 0")  # override only to test the scheduler
 TIMEZONE = "Asia/Jerusalem"
 
-# TabPFN (the choices are measured in scripts/tabpfn_options.py). Their code leaves the model to the server's default, "auto",
-# which is TabPFN-3.5 today and can change without notice. We pin it, fit once with the server-side cache, and give
-# every request a deadline: past it, the ranking falls back to CatBoost's P(lead) x the brand's median payout.
-TABPFN_MODEL = "v3.5_default"
+# TabPFN (the choices are measured in scripts/tabpfn_options.py). The brief specifies TabPFN v3 ("tabpfn-client (v3.0)";
+# the client package itself is 0.6.x). Their code never names a model, so the server's default, "auto", decides, and it
+# has already moved to v3.5 without notice. We pin v3, fit once with the server-side cache, and give every request a
+# deadline: past it, the ranking falls back to CatBoost's P(lead) x the brand's median payout. v3.5 measured more
+# accurate (payout MAPE 5.43% vs 6.84%); moving to it is the researcher's call, and one setting: TABPFN_MODEL=v3.5_default.
+TABPFN_MODEL = os.environ.get("TABPFN_MODEL", "v3_default")
 TABPFN_FIT_MODE = "fit_with_cache"
 TABPFN_FIT_FILE = "tabpfn_fit.json"   # the saved fit, stored inside each model version
 FIRST_NAMES_FILE = "first_name_gender.json.gz"  # the part of the names database their code reads
