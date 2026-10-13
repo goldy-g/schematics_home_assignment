@@ -12,6 +12,25 @@ scheduler ──► weekly job ──►  runs: params, metrics, their log   ─
               production run   aliases: @champion, @previous            CatBoost P(lead) × TabPFN $payout
 ```
 
+## The brief, item by item
+
+| The brief asks | Where it is done |
+|---|---|
+| Productize with MLflow, runnable locally, Docker allowed; do not change functions and logic | Their two files unchanged; `docker compose up` runs MLflow, training, the scheduler and the API ([Run it](#run-it)) |
+| Both modes: train/test and production (registers artifacts) | `python -m pipeline.train --mode test` / `--mode production` ([Training](#training)) |
+| Schedule the production run weekly, Sunday 05:00 | `pipeline/scheduler.py`, Israel time ([Training](#training)) |
+| Log technical parameters so runs are comparable | Parameters and metrics on every run ([Training](#training)) |
+| Save the researcher's log as an artifact | `researcher_log/` on every run ([Training](#training)) |
+| Version artifacts; identify and roll back a serving version | `bl_brand_ranker` versions, `@champion` / `@previous`, header `X-Model-Version` ([Versions and rollback](#versions-and-rollback)) |
+| Productize TabPFN in the most efficient way | Fit once per week, saved in the version, pinned, 2 s deadline ([TabPFN](#tabpfn-made-efficient)) |
+| Endpoint: a user's dict in, the ranked brand dict out, synchronous | `POST /rank` ([Serving](#serving)) |
+| Simulate production traffic; median and tail latency; minimize latency | `scripts/load_test.py` ([Load simulation](#load-simulation), [Minimizing latency](#minimizing-latency-and-memory)) |
+| Runnable code in main | This branch |
+
+One difference from the brief's description is kept on purpose: their production mode does not train on all data (it
+skips the newest 6 days, like test mode). Changing it would change their logic, so it is kept and explained under
+[Found in their code and data](#found-in-their-code-and-data-kept-as-given-flagged).
+
 ## Run it
 
 **Needs:** Python 3.12+, the data file, and a Prior Labs TabPFN token.
@@ -47,7 +66,7 @@ python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 Local records live in `mlflow.db` and `mlruns/` (both git-ignored).
 
-## Training (tasks 1.3–1.7)
+## Training
 
 | Command | What it does |
 |---|---|
@@ -69,7 +88,7 @@ steps. Each run records in MLflow:
 
 Experiments: `bl_ranking_evaluation` (test runs) and `bl_ranking_production` (production runs).
 
-## Versions and rollback (task 1.6)
+## Versions and rollback
 
 Each production run registers a version of `bl_brand_ranker` that is complete on its own: the three model files, the
 saved TabPFN fit, the first-name table, their predictor file, our wrapper (`pipeline/ranker.py`), its settings and the
@@ -83,7 +102,7 @@ package list. A version is promoted only if it passes a smoke check (loaded like
 
 The endpoint checks `@champion` every minute and swaps versions without a restart (`POST /reload` to do it at once).
 
-## Serving (task 1.9)
+## Serving
 
 ```bash
 curl -s -X POST localhost:8100/rank -H 'content-type: application/json' -d @examples/visitor.json
@@ -98,7 +117,7 @@ say which version answered and where the payouts came from. `GET /health`, `GET 
 operations. A request without `register_date` gets `422`; a visitor with fewer than 5 of 8 survey answers gets their
 predictor's own answer, `{"expected_payout": 0, "prob_lead": 0}`.
 
-## TabPFN, made efficient (task 1.8)
+## TabPFN, made efficient
 
 TabPFN runs on Prior Labs' servers. Its `fit` trains nothing: it uploads the 1,000 example rows the model reads at
 every prediction. Their predictor fits on every request. Measured on the same rows (`scripts/tabpfn_options.py`):
@@ -124,7 +143,7 @@ TabPFN is late, fails or is out of quota, the brands are ranked with their media
 | Results are reproducible | Every test run on the same data scores the same: F1 0.47, payout MAPE 5.43% |
 | The schedule works | Runs tagged `trigger = scheduler`; tests cover the October clock change |
 
-## Load test (task 1.11)
+## Load simulation
 
 `scripts/load_test.py` sends real registered visitors from the newest week at random (Poisson) arrival times, each
 request on its own, so a slow answer never holds back the next one. The realistic rate comes from the data: at most
@@ -139,13 +158,13 @@ request on its own, so a slow answer never holds back the next one. The realisti
 the tail at about 2 s. About 0.6 s of every request is network round trips to the hosted API; a new visitor costs
 another ~0.4 s of server-side row preparation. Below that needs TabPFN running closer (see below).
 
-## Minimizing latency and memory (task 1.12)
+## Minimizing latency and memory
 
 Their predictor loads the names-dataset package when imported (2.1 GB) and uses it for one feature, the gender of the
-first name. From v5 on, each version carries a 4.1 MB table of exactly that (714,220 first names) behind the same
+first name. Each version now carries a 4.1 MB table of exactly that (714,220 first names) behind the same
 `search()`; `scripts/names_table_check.py` runs their gender function both ways on 3.5 million names: **0 differences**.
 
-| | v4 (full database) | v5 (table) |
+| | Before (full database) | After (table) |
 |---|---:|---:|
 | Version load | 6.6 s | 2.5 s |
 | Peak memory | 2.27 GB | 0.76 GB |
