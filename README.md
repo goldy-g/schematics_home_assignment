@@ -195,8 +195,9 @@ tests/      automated checks
 ## For production (beyond this task)
 
 - **Quota:** TabPFN-3/3.5 charge at least 10,000 tokens per call; the default 20M a month covers ~2,000 rankings, while
-  the data implies ~30,000. Options: precompute payouts for common profiles in the weekly job, run TabPFN in our own
-  cloud, or a paid agreement.
+  the data implies ~30,000. Precomputing is not an option, because the inputs include the session's hour and the
+  seconds it took to register. Options: a paid agreement with higher limits, or TabPFN in our own cloud (Prior Labs
+  offers it through AWS and Azure), which also removes the ~0.6 s of internet round trips.
 - **Log every request** (version, payout source, latency, later the outcome) for monitoring.
 - **Databricks:** the pipeline points at a workspace through `MLFLOW_TRACKING_URI=databricks`; the data becomes a
   Delta table; the schedule becomes a Job (`0 0 5 ? * SUN`, Asia/Jerusalem); the endpoint becomes Model Serving.
