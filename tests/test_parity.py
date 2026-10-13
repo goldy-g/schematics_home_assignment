@@ -6,7 +6,8 @@ Needs the local MLflow records with a @champion, the data file and TABPFN_TOKEN 
 
 Both sides use the same TabPFN model: their predictor leaves it to the server's default, which drifts (v3 when the brief
 was written, v3.5 today), so the test pins their predictor to the model the served version uses. It compares logic, not
-model versions. Their predictor otherwise runs exactly as given, with the full names database.
+model versions. Their predictor otherwise runs exactly as given, with the full names database. Our side gets a long
+TabPFN deadline: the 2 s deadline and its fallback are a serving policy, measured by the load test, not logic.
 
 What must match: the brands shown and their order, exactly; that is what the visitor sees. The expected payouts behind
 the order may differ a little: we call TabPFN with its server-side cache, which rounds differently from a fresh
@@ -38,7 +39,9 @@ def test_served_model_ranks_like_their_predictor():
     settings.setup_mlflow()
     uri = f"models:/{settings.MODEL_NAME}@{settings.CHAMPION}"
     full_names = theirs.nd
+    os.environ["PAYOUT_DEADLINE_S"] = "60"  # read when the version loads: wait for TabPFN, never fall back here
     served = mlflow.pyfunc.load_model(uri)  # our loader gives their module the small first-name table
+    del os.environ["PAYOUT_DEADLINE_S"]
     ours, small_names = served.unwrap_python_model(), theirs.nd
     files = mlflow.artifacts.download_artifacts(f"{uri}") + "/artifacts/files/"  # the very files this version serves
     log_dir = str(settings.ROOT / "outputs" / "parity_logs") + "/"
