@@ -104,7 +104,7 @@ def save_tabpfn_fit(files):
 
 
 def save_first_name_gender(path):
-    """Task 1.12: write the part of the names database their gender feature reads (FirstNameGender in ranker.py reads it).
+    """Write the part of the names database their gender feature reads (FirstNameGender in ranker.py reads it).
     Built from the full database their trainer already loaded, with the same keys and the same shares."""
     names = {"M": "Male", "F": "Female"}
     table = {name: {names[code]: share for code, share in info["gender"].items()}

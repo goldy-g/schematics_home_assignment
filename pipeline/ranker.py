@@ -42,7 +42,7 @@ class PayoutWithDeadline:
 
 
 class FirstNameGender:
-    """Task 1.12: the names database, cut to the one thing their code reads from it.
+    """The names database, cut to the one thing their code reads from it.
 
     Their predictor runs `nd = NameDataset()` when imported (names-dataset: 2.1 GB of memory, 2.7 s) and uses it only in
     detect_gender_with_confidence(), which reads search(first_name)["first_name"]["gender"]. This keeps exactly that:

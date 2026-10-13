@@ -1,4 +1,4 @@
-"""Task 1.8: measure ways to call TabPFN for one ranking request, and pick the most efficient.
+"""Measure ways to call TabPFN for one ranking request, and pick the most efficient.
 
 Every option uses the production context (1,000 rows) and the same 10 request rows: their predictor's features for
 the made-up visitor, one row per brand.

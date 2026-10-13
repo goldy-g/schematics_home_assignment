@@ -1,4 +1,4 @@
-"""Task 1.12: the small first-name table answers their gender feature like the names database does (names made up).
+"""The small first-name table answers their gender feature like the names database does (names made up).
 The full proof, over every name in the database and the data, is scripts/names_table_check.py."""
 import gzip
 import json

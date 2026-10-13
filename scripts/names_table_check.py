@@ -1,9 +1,9 @@
-"""Task 1.12: prove the small first-name table gives exactly the answers of the full names database, and measure both.
+"""Prove the small first-name table gives exactly the answers of the full names database, and measure both.
 
     .venv/bin/python scripts/names_table_check.py
 
 Their gender feature (detect_gender_with_confidence, the predictor's copy) is called twice per name: once with the full
-names-dataset (their import) and once with FirstNameGender, the table every version carries from task 1.12. Names
+names-dataset (their import) and once with FirstNameGender, the table every version carries. Names
 checked: every first name and every last name in the database, each also lower-cased and padded with spaces, and every
 first name in the data file, written as it arrives. Only counts are printed, never a name. Results:
 outputs/names_table_check.json.

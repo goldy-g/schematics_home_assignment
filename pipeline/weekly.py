@@ -6,7 +6,8 @@
 2. Production mode: train, register a new version, smoke-check it, make it the champion.
 
 The production run is tagged with the test run's id, so every version points to its own accuracy report.
-(Both modes train on the same rows, quirk T1, so that report describes exactly the model being shipped.)
+(Their two modes train on the same rows; the switch only chooses grade or save. So that report describes
+exactly the model being shipped.)
 """
 from pipeline import train
 

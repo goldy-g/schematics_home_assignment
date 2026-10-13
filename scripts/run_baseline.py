@@ -1,4 +1,4 @@
-"""Task 1.1 baseline: run the researcher's two scripts exactly as given, and time each step.
+"""Baseline: run the researcher's two scripts exactly as given, and time each step.
 
 Their files (bl_models_train.py, bl_exp_payout_predictor.py) are imported, never edited.
 Everything this script writes goes to outputs/baseline/ (git-ignored).

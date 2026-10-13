@@ -10,8 +10,8 @@ class StandInRanker:
         return {"xlt": {"rank": 1.0, "expected_payout": 9.5}}, "tabpfn"
 
 
-class OldStyleModel:
-    """A version registered before rank() existed: only MLflow's predict()."""
+class PlainPyfuncModel:
+    """A model with only MLflow's standard predict(), no rank()."""
     def predict(self, frame):
         assert isinstance(frame.loc[0, "sub1"], str)  # numbers are turned into text, as their code would
         return {"xlt": {"rank": 1.0, "expected_payout": 3.0}}
@@ -56,9 +56,9 @@ def test_not_ready_until_a_model_is_loaded():
     assert test_client.post("/rank", json=settings.EXAMPLE_VISITOR).status_code == 503
 
 
-def test_an_old_version_without_rank_still_answers():
-    old = OldStyleModel()
-    response = client(ranker=old, model=old).post("/rank", json=dict(settings.EXAMPLE_VISITOR, sub1=1121993))
+def test_a_model_without_rank_still_answers():
+    plain = PlainPyfuncModel()
+    response = client(ranker=plain, model=plain).post("/rank", json=dict(settings.EXAMPLE_VISITOR, sub1=1121993))
     assert response.status_code == 200
     assert response.json() == {"xlt": {"rank": 1.0, "expected_payout": 3.0}}
     assert response.headers["X-Payout-Source"] == "unknown"

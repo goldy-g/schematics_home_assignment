@@ -35,7 +35,7 @@ reload_lock = threading.Lock()
 class Visitor(BaseModel):
     """Their predictor's 22 fields. Numbers are accepted where their own example sends numbers (campaign_id, sub1,
     sub3, cellphone); their code turns sub1-sub3 into text. Note: in the data sub1 is text with a leading zero
-    ("01121993"), so sending it as a number gives a value training never saw (quirk P7)."""
+    ("01121993"), so sending it as a number gives a value training never saw."""
     session_dt: str
     conversion_dt: str | None = None
     register_date: str | None = None
@@ -91,8 +91,8 @@ def watch_champion():
 
 
 def answer(visitor):
-    """Versions from v3 on have rank(), which also says where the payout came from. Older versions (a rollback can
-    bring them back) only have MLflow's standard predict(): use it, with the types their stored signature expects."""
+    """Our versions have rank(), which also says where the payout came from. A model without it (any standard MLflow
+    pyfunc) is served through predict(), with the types its stored signature expects."""
     if hasattr(state["ranker"], "rank"):
         return state["ranker"].rank(visitor)
     row = dict(visitor, campaign_id=int(visitor["campaign_id"]), cellphone=int(visitor["cellphone"]),

@@ -1,7 +1,7 @@
 """Time the served model the way a server uses it: load a version once, then rank one visitor per call.
 
 Usage: .venv/bin/python scripts/ranker_speed.py [calls] [version]     (default: 10 calls, @champion)
-Prints the load time, the per-call times and the process's peak memory (task 1.12 compares versions with it).
+Prints the load time, the per-call times and the process's peak memory (to compare two versions).
 """
 import resource
 import statistics

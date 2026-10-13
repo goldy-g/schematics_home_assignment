@@ -1,4 +1,4 @@
-"""Task 1.11: simulate production traffic against the ranking endpoint; report median and tail latency.
+"""Load simulation: simulate production traffic against the ranking endpoint; report median and tail latency.
 
     .venv/bin/python scripts/load_test.py --name realistic --rate 0.5 --requests 60
     .venv/bin/python scripts/load_test.py --name stress    --rate 2   --requests 120

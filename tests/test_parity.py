@@ -5,7 +5,7 @@ request:    RUN_PARITY=1 .venv/bin/python -m pytest -s tests/test_parity.py
 Needs the local MLflow records with a @champion, the data file and TABPFN_TOKEN in .env.
 
 What must match: the brands shown and their order, exactly; that is what the visitor sees. The expected payouts behind
-the order may differ a little: we call TabPFN with its server-side cache (task 1.8), which rounds differently from a fresh
+the order may differ a little: we call TabPFN with its server-side cache, which rounds differently from a fresh
 fit (first measured at $0.31 on one visitor, then up to $0.57 across ten). So payouts only get a sanity bound, 5% or $1,
 which still catches real bugs (wrong columns, wrong model, wrong files) that would move them by far more.
 """
