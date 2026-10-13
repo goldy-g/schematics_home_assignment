@@ -22,7 +22,7 @@ scheduler ──► weekly job ──►  runs: params, metrics, their log   ─
 | Log technical parameters so runs are comparable | Parameters and metrics on every run ([Training](#training)) |
 | Save the researcher's log as an artifact | `researcher_log/` on every run ([Training](#training)) |
 | Version artifacts; identify and roll back a serving version | `bl_brand_ranker` versions, `@champion` / `@previous`, header `X-Model-Version` ([Versions and rollback](#versions-and-rollback)) |
-| Productize TabPFN in the most efficient way | Fit once per week, saved in the version, pinned, 2 s deadline ([TabPFN](#tabpfn-made-efficient)) |
+| Productize TabPFN in the most efficient way | Fit once per week, saved in the version, pinned to v3 as the brief names, 2 s deadline ([TabPFN](#tabpfn-made-efficient)) |
 | Endpoint: a user's dict in, the ranked brand dict out, synchronous | `POST /rank` ([Serving](#serving)) |
 | Simulate production traffic; median and tail latency; minimize latency | `scripts/load_test.py` ([Load simulation](#load-simulation), [Minimizing latency](#minimizing-latency-and-memory)) |
 | Runnable code in main | This branch |
@@ -130,17 +130,26 @@ every prediction. Their predictor fits on every request. Measured on the same ro
 | + the fit saved and reloaded (`save_model`) | 0.74 s (a repeated visitor) |
 
 What the system does: the weekly job fits once with the cache and saves the fit inside the version, so a server only
-predicts. The model is pinned to `v3.5_default` in training and serving (their code used the server's default,
-"auto", which is v3.5 today and the most accurate: MAPE 5.43% vs 6.84% for v3). Every call has a **2 s deadline**: if
-TabPFN is late, fails or is out of quota, the brands are ranked with their median payout instead, and the header says
-`fallback`.
+predicts. Every call has a **2 s deadline**: if TabPFN is late, fails or is out of quota, the brands are ranked with
+their median payout instead, and the header says `fallback`.
+
+**The model is pinned to TabPFN v3** (`v3_default`), the version the brief names ("tabpfn-client (v3.0)"; the client
+package itself is 0.6.x). Their code never names a model, so the server's default decides, and it has already moved to
+v3.5 without notice: on the same rows the two differ by up to $88 a payout. That drift is why we pin. v3.5 measured
+more accurate on the test week, so it is a candidate for the researcher, one setting away
+(`TABPFN_MODEL=v3.5_default`, then the weekly job grades and registers it):
+
+| Model | Payout MAPE | Payout MAE | Per call (served, repeated visitor) |
+|---|---:|---:|---:|
+| v3, pinned | 6.84% | $2.35 | 0.79 s |
+| v3.5, today's "auto" | 5.43% | $2.34 | 0.74 s |
 
 ## Proof
 
 | Claim | Evidence |
 |---|---|
-| Their logic is unchanged | `RUN_PARITY=1 pytest -s tests/test_parity.py`: their predictor as given vs our endpoint on 10 real visitors, identical brands and ranks; payouts within 5% or $1 (the cache rounds slightly differently) |
-| Results are reproducible | Every test run on the same data scores the same: F1 0.47, payout MAPE 5.43% |
+| Their logic is unchanged | `RUN_PARITY=1 pytest -s tests/test_parity.py`: their predictor as given vs our endpoint on 10 real visitors, both on the same TabPFN model: identical brands and ranks; payouts within $0.26 (the cache rounds slightly differently) |
+| Results are reproducible | Every test run with the same data and model scores the same: F1 0.47; payout MAPE 6.84% with v3 (5.43% with v3.5) |
 | The schedule works | Runs tagged `trigger = scheduler`; tests cover the October clock change |
 
 ## Load simulation
@@ -151,11 +160,20 @@ request on its own, so a slow answer never holds back the next one. The realisti
 
 | Run | Rate | p50 | p90 | p95 | p99 | max | errors | fallback |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
-| realistic | 0.53/s | 1.36 s | 1.70 s | 1.85 s | 2.02 s | 2.04 s | 0 | 3.3% |
-| stress | 1.54/s | 1.38 s | 1.73 s | 1.85 s | 1.90 s | 2.04 s | 0 | 1.7% |
+| realistic | 0.53/s | 1.36 s | 1.63 s | 1.75 s | 1.79 s | 2.02 s | 0 | 1.7% |
+| stress | 1.69/s | 1.58 s | 2.03 s | 2.04 s | 2.04 s | 2.04 s | 0 | 23% |
 
-60 requests each, from a laptop over the internet to Prior Labs, so p99 rests on about one request. The deadline caps
-the tail at about 2 s. About 0.6 s of every request is network round trips to the hosted API; a new visitor costs
+```bash
+.venv/bin/python scripts/load_test.py --name realistic --rate 0.5 --requests 60 --seed 1
+.venv/bin/python scripts/load_test.py --name stress    --rate 2   --requests 60 --seed 11
+```
+
+Measured against the Docker stack (TabPFN v3), 60 requests each, from a laptop over the internet to Prior Labs, so p99
+rests on about one request. The deadline caps the tail at about 2 s. The stress run is about 100 requests a minute,
+past Prior Labs' limit of 60 predictions a minute: a quarter of the rankings used the fallback, and still no request
+took longer than 2.04 s or failed. Two cautions when re-running: give each run its own visitors (`--seed`), because
+Prior Labs reuses rows it has just prepared and repeated visitors look faster; and leave a minute between runs, so the
+rate limit starts empty. About 0.6 s of every request is network round trips to the hosted API; a new visitor costs
 another ~0.4 s of server-side row preparation. Below that needs TabPFN running closer (see below).
 
 ## Minimizing latency and memory
@@ -168,7 +186,7 @@ first name. Each version now carries a 4.1 MB table of exactly that (714,220 fir
 |---|---:|---:|
 | Version load | 6.6 s | 2.5 s |
 | Peak memory | 2.27 GB | 0.76 GB |
-| Request (repeated visitor, median) | 0.78 s | 0.74 s |
+| Request (repeated visitor, median; both on v3.5) | 0.78 s | 0.74 s |
 
 ## Tests
 
@@ -184,6 +202,7 @@ RUN_PARITY=1 .venv/bin/python -m pytest -s tests/test_parity.py      # slow, onl
 | `TABPFN_TOKEN` | (required, in `.env`) | Prior Labs API token |
 | `MLFLOW_TRACKING_URI` | `sqlite:///mlflow.db` | Where runs and versions are recorded |
 | `PAYOUT_DEADLINE_S` | `2.0` | TabPFN deadline per request |
+| `TABPFN_MODEL` | `v3_default` | The TabPFN model, pinned (`v3.5_default` is the measured challenger) |
 | `BL_WEEKLY_CRON` | `0 5 * * 0` | The schedule (Israel time); override only to test |
 | `BL_LOG_DIR` | `outputs/serving_logs` | Where their predictor writes its log |
 
@@ -207,6 +226,7 @@ tests/      automated checks
   from every paid row, and about half of the paid rows have no verified verdict. Brands that pay without reporting
   back are ranked down.
 - **Verdicts are copied across a visit's rows** when one visitor went to two brands; their brand check undoes it.
+- **TabPFN's model is left to the server's default.** The brief names v3; "auto" now means v3.5. Pinned to v3 here.
 - **TabPFN's 1,000 examples cover about 28 hours and 4 of the 10 brands.**
 - **A 2.1 GB package for one feature, and that feature guesses gender from a name:** a fairness question for a
   lending funnel.
