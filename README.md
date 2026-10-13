@@ -33,7 +33,7 @@ skips the newest 6 days, like test mode). Changing it would change the researche
 
 ## Run it
 
-**Needs:** Python 3.12+, the data file, and a Prior Labs TabPFN token.
+**Needs:** Docker (or Python 3.12+ for the local way), the data file, and a Prior Labs TabPFN token.
 
 1. Put the data at `data/bl_full_data.csv` (git-ignored; it holds personal details and never enters git, MLflow or the image).
 2. Create `.env` (git-ignored) with one line: `TABPFN_TOKEN=<your token>`.
@@ -52,19 +52,23 @@ docker compose up --build        # or: docker-compose up --build
 | `api` | The ranking endpoint | http://localhost:8100 |
 
 The API answers `503` on `/health` until the first champion exists (about 2 minutes after start).
-With colima on a Mac, keep the repository under your home folder: colima shares only that folder with its VM, so
-the data mount would otherwise be empty.
+
+- **Memory:** give Docker at least 6 GB (measured: training peaks at 2.6 GB, the MLflow server uses 1.6 GB, the API
+  0.5 GB). Docker Desktop: Settings → Resources. colima: `colima start --memory 8 --cpu 4`.
+- **First build:** it downloads the Python image and the packages; about 4 minutes on a laptop.
+- **colima on a Mac:** keep the repository under your home folder. colima shares only that folder with its VM, so the
+  data mount would otherwise be empty.
 
 ### Locally
 
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m pipeline.weekly                   # test run, then production run → a new version, promoted
-.venv/bin/mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000   # the records: http://localhost:5000
+.venv/bin/mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5050   # the records: http://localhost:5050
 .venv/bin/uvicorn serving.app:app --port 8100         # the endpoint
 ```
 
-Local records live in `mlflow.db` and `mlruns/` (both git-ignored).
+Local records live in `mlflow.db` and `mlruns/` (both git-ignored). Port 5050, because macOS keeps 5000 for AirPlay.
 
 ## Training
 
@@ -79,7 +83,8 @@ The original trainer runs through a subclass (`ObservedFit` in `pipeline/train.p
 steps. Each run records in MLflow:
 
 - **Parameters:** data fingerprint (`data_sha256`) and date range, row counts after each filter, the train/test
-  boundary, CatBoost and TabPFN settings, package versions, Python. MLflow adds the git commit. Tag `trigger` says
+  boundary, CatBoost and TabPFN settings, package versions, Python. MLflow adds the git commit when it runs from a git checkout
+  (local runs; the Docker image carries no git history). Tag `trigger` says
   whether the scheduler or a person started it.
 - **Metrics:** step timings; in test mode also the researcher's accuracy, read from the log:
   `week_f1_lead`, `week_precision_lead`, …, `day_*` (one point per test day), `payout_mape`, `payout_mae`, and both per
